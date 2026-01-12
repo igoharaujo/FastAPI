@@ -3,10 +3,12 @@ from sqlalchemy.orm import Session
 from models import Usuario
 from dependencies import pegar_sessao
 from main import bcrypt_context
-from schemas import UsuarioSchema
+from schemas import UsuarioSchema, LoginSchema
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
-
+def criar_token(usuario_id: int):
+    token = f"fnsyubf7s8f9{usuario_id}"
+    return token
 
 @auth_router.get("/")
 async def home():
@@ -37,3 +39,14 @@ async def criar_conta(
     session.commit()
 
     return {"message": f"Conta criada com sucesso para o email {usuario_schmea.email}"}
+
+
+@auth_router.post("/login")
+async def login(login_schema: LoginSchema, session: Session = Depends(pegar_sessao)):
+    usuario = session.query(Usuario).filter(Usuario.email == login_schema.email).first()
+    if not usuario:
+        raise HTTPException(status_code=400, detail="Email não cadastrado")
+    else:
+        access_token = criar_token(usuario.id)
+        return {"access_token": access_token, "token_type": "bearer"}
+
