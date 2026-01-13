@@ -1,23 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from models import Usuario
-from dependencies import pegar_sessao
+from dependencies import pegar_sessao, verificar_token
 from main import bcrypt_context, ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
 from schemas import UsuarioSchema, LoginSchema
 from jose import jwt, JWTError
 from datetime import datetime, timedelta, timezone
+from fastapi.security import OAuth2PasswordRequestForm
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
 def criar_token(usuario_id: int, duracao_token=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)):
     data_expiracao = datetime.now(timezone.utc) + duracao_token
-    dic_info = {"sub": usuario_id, "exp": data_expiracao}
+    dic_info = {"sub": str(usuario_id), "exp": data_expiracao}
     jwt_codificado = jwt.encode(dic_info, SECRET_KEY, algorithm=ALGORITHM)
     return jwt_codificado
-
-def verificar_token(token, session: Session = Depends(pegar_sessao)):
-    usuario = session.query(Usuario).filter(Usuario.id == token).first()
-    return usuario
 
 
 def autenticar_usuario(email: str, senha: str, session: Session):
@@ -78,9 +75,28 @@ async def login(login_schema: LoginSchema, session: Session = Depends(pegar_sess
               }
 
 
+
+@auth_router.post("/login-form")
+async def login_form(dados_formulario: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(pegar_sessao)):
+    usuario = autenticar_usuario(
+        dados_formulario.username,
+        dados_formulario.password,
+        session
+    )
+    if not usuario:
+        raise HTTPException(status_code=400, detail="Email não cadastrado ou senha incorreta")
+    else:
+        access_token = criar_token(usuario.id)
+        return {
+            "access_token": access_token,
+            "token_type": "bearer"
+              }
+
+
+
+
 @auth_router.post("/refresh")
-async def use_refresh_token(token: str):
-    Usuario = verificar_token(token)
+async def use_refresh_token(usuario: Usuario = Depends(verificar_token)):
     access_token = criar_token(Usuario.id)
     return {
             "access_token": access_token,
